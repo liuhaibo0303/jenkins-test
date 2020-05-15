@@ -1,0 +1,123 @@
+
+pipeline {
+    
+    environment {
+        CC='clang'
+        DD='ASBCD'
+    }
+    parameters {
+        choice(
+          description: '你需要选择哪个模块进行构建 ?',
+          name: 'modulename',
+          choices: ['Module1', 'Module2', 'Module3']
+        )
+        
+        string(
+            description: '你需要在哪台机器上进行部署 ?',
+            name: 'deploy_hostname', 
+            defaultValue: 'host131', 
+        )
+
+        text(
+            name: 'release_note', 
+            defaultValue: 'Release Note 信息如下所示: Bug-Fixed: Feature-Added: ', 
+            description: 'Release Note的详细信息是什么 ?'
+        )
+
+        booleanParam(
+            name: 'test_skip_flag', 
+            defaultValue: true, 
+            description: '你需要在部署之前执行自动化测试么 ?'
+        )
+
+        password(
+            name: 'deploy_password',
+            description: '部署机器连接时需要用到的密码信息是什么 '
+        )
+
+        file(
+            name: "deploy_property_file", 
+            description: "你需要输入的部署环境的设定文件是什么 ?"
+        )
+    }
+    options {
+        // 设置Pipeline运行的超时时间
+        timeout(time:1,unit:'HOURS')
+        // 不允许并行执行Pipeline,可用于防止同时访问共享资源等
+        disableConcurrentBuilds()
+        // 失败后，重试整个Pipeline的次数
+        retry(3)
+        // 预定义由Pipeline生成的所有控制台输出时间
+        timestamps()
+        
+    }
+
+
+    agent any
+
+    stages {
+        stage("Start") {
+            steps {
+                sh 'printenv'
+                withCredentials([usernamePassword(credentialsId: 'liu', passwordVariable: 'password', usernameVariable: 'username')]) {
+                    echo "用户名/密码(打印日志时会隐藏)： ${username} ${password}"
+                }
+            }
+        }
+        stage("Build") {
+            steps {
+                echo "This is build"
+                echo "build 选中的构建Module为 : ${params.modulename} ..."
+            }
+        }
+        stage("Test") {
+            //设置先对条件进行判断，不通过会跳过该stage的step节点，继续执行后面的stage
+            when {
+                allOf {
+                    environment name: 'modulename', value: 'Module1'
+                }
+            }
+            steps {
+                echo "This is test"
+                echo "Test stage: 是否执行自动化测试: ${params.test_skip_flag} ..."
+            }
+        }
+        stage("Deploy") {
+            input {
+                message "确定要继续发布吗？"
+                ok "继续"
+                submitter "alice,bob"
+                parameters {
+                    string(name: 'PERSON', defaultValue: 'Mr Jenkins', description: 'Who should I say hello to?')
+                }
+            }
+            steps {
+                echo "Hello, ${PERSON}, nice to meet you."
+                echo "Deploy stage: 部署机器的名称 : ${params.deploy_hostname} ..." 
+                echo "Deploy stage: 部署连接的密码 : ${params.deploy_password} ..." 
+                echo "Deploy stage: Release Note的信息为 : ${params.release_note} ..." 
+            }
+        }
+        
+        stage('Example Build') {
+            agent { docker 'maven:3-alpine' }
+            steps {
+                echo 'Hello, Maven'
+                sh 'mvn --version'
+            }
+        }
+        stage('Example Test') {
+            agent { docker 'openjdk:8-jre' }
+            steps {
+                echo 'Hello, JDK'
+                sh 'java -version'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "this always do"
+        }
+    }
+}
